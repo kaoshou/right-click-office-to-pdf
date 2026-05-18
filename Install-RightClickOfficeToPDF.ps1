@@ -30,13 +30,7 @@ foreach ($file in $files) {
 Remove-Item -LiteralPath (Join-Path $installDir "RightClickOfficeToPDF.cmd") -Force -ErrorAction SilentlyContinue
 Remove-Item -LiteralPath (Join-Path $installDir "Launch-RightClickOfficeToPDF.vbs") -Force -ErrorAction SilentlyContinue
 
-$culture = [System.Globalization.CultureInfo]::CurrentUICulture.Name
-
-if ($culture -like "zh-TW*" -or $culture -like "zh-Hant*" -or $culture -like "zh-HK*" -or $culture -like "zh-MO*") {
-    $menuText = "轉換為 PDF 檔案"
-} else {
-    $menuText = "Convert to PDF"
-}
+$menuText = "轉換為 PDF 檔案"
 
 $powershellExe = Join-Path $env:WINDIR "System32\WindowsPowerShell\v1.0\powershell.exe"
 $launcher = Join-Path $installDir "Invoke-RightClickOfficeToPDF.ps1"
