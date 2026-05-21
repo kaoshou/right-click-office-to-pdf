@@ -209,30 +209,46 @@ function Convert-WordToPdf {
     $doc = $null
     try {
         $pdfPath = Get-TargetPdfPath $InputPath
+
         $word = New-Object -ComObject Word.Application
-        $word.Visible = $false
+
+        # Win10 + Office COM 在背景模式有時會卡住；使用可見模式較穩定。
+        $word.Visible = $true
         $word.DisplayAlerts = 0
         try { $word.AutomationSecurity = 3 } catch {}
 
-        # Documents.Open(FileName, ConfirmConversions, ReadOnly, AddToRecentFiles)
-        $doc = $word.Documents.Open($InputPath, $false, $true, $false)
-        $doc.ExportAsFixedFormat($pdfPath, 17)
+        # 使用最精簡 Open，避免 Win10 Office COM 因額外參數卡住。
+        $doc = $word.Documents.Open($InputPath)
+
+        # 17 = wdFormatPDF
+        # 使用 SaveAs PDF，避免 Word ExportAsFixedFormat 在部分 Win10 / Office 環境卡住。
+        $doc.SaveAs([ref]$pdfPath, [ref]17)
 
         if (Test-Path -LiteralPath $pdfPath) {
             Write-Log "OK using Microsoft Word: $pdfPath"
             return $true
         }
+
         return $false
     } catch {
         Write-Log "Microsoft Word conversion failed: $($_.Exception.Message)"
         return $false
     } finally {
-        if ($null -ne $doc) { try { $doc.Close($false) } catch {}; Release-ComObject $doc }
-        if ($null -ne $word) { try { $word.Quit() } catch {}; Release-ComObject $word }
+        if ($null -ne $doc) {
+            try { $doc.Close($false) } catch {}
+            Release-ComObject $doc
+        }
+
+        if ($null -ne $word) {
+            try { $word.Quit() } catch {}
+            Release-ComObject $word
+        }
+
         [GC]::Collect()
         [GC]::WaitForPendingFinalizers()
     }
 }
+
 
 function Convert-ExcelToPdf {
     param([string]$InputPath)
@@ -246,31 +262,47 @@ function Convert-ExcelToPdf {
     $workbook = $null
     try {
         $pdfPath = Get-TargetPdfPath $InputPath
+
         $excel = New-Object -ComObject Excel.Application
-        $excel.Visible = $false
+
+        # Win10 + Office COM 在背景模式有時會卡住；使用可見模式較穩定。
+        $excel.Visible = $true
         $excel.DisplayAlerts = $false
         try { $excel.AutomationSecurity = 3 } catch {}
         try { $excel.AskToUpdateLinks = $false } catch {}
+        try { $excel.EnableEvents = $false } catch {}
 
-        # Workbooks.Open(FileName, UpdateLinks, ReadOnly)
-        $workbook = $excel.Workbooks.Open($InputPath, 0, $true)
+        # 使用最精簡 Open，避免額外參數在部分 Win10 Office COM 環境卡住。
+        $workbook = $excel.Workbooks.Open($InputPath)
+
+        # 0 = xlTypePDF
         $workbook.ExportAsFixedFormat(0, $pdfPath)
 
         if (Test-Path -LiteralPath $pdfPath) {
             Write-Log "OK using Microsoft Excel: $pdfPath"
             return $true
         }
+
         return $false
     } catch {
         Write-Log "Microsoft Excel conversion failed: $($_.Exception.Message)"
         return $false
     } finally {
-        if ($null -ne $workbook) { try { $workbook.Close($false) } catch {}; Release-ComObject $workbook }
-        if ($null -ne $excel) { try { $excel.Quit() } catch {}; Release-ComObject $excel }
+        if ($null -ne $workbook) {
+            try { $workbook.Close($false) } catch {}
+            Release-ComObject $workbook
+        }
+
+        if ($null -ne $excel) {
+            try { $excel.Quit() } catch {}
+            Release-ComObject $excel
+        }
+
         [GC]::Collect()
         [GC]::WaitForPendingFinalizers()
     }
 }
+
 
 function Convert-PowerPointToPdf {
     param([string]$InputPath)
@@ -282,14 +314,13 @@ function Convert-PowerPointToPdf {
 
     $powerpoint = $null
     $presentation = $null
-
     try {
         $pdfPath = Get-TargetPdfPath $InputPath
+
         $powerpoint = New-Object -ComObject PowerPoint.Application
         try { $powerpoint.AutomationSecurity = 3 } catch {}
 
         # Presentations.Open(FileName, ReadOnly, Untitled, WithWindow)
-        # Use hidden mode first. If it fails, retry with a visible window.
         try {
             $presentation = $powerpoint.Presentations.Open($InputPath, -1, 0, 0)
         } catch {
@@ -298,10 +329,7 @@ function Convert-PowerPointToPdf {
         }
 
         # 32 = ppSaveAsPDF
-        # Do NOT call ExportAsFixedFormat here.
-        # Some Office COM environments throw:
-        # "Cannot convert int value 2 to Object"
-        # when ExportAsFixedFormat is called from PowerShell.
+        # 不使用 ExportAsFixedFormat，避免部分 Office COM 環境出現 int/Object 型別例外。
         $presentation.SaveAs($pdfPath, 32)
 
         if (Test-Path -LiteralPath $pdfPath) {
@@ -394,7 +422,7 @@ if ($null -eq $Paths -or $Paths.Count -eq 0) {
     exit 1
 }
 
-$normalizedPaths = @(Resolve-InputPaths $Paths | Select-Object -Unique)
+$normalizedPaths = Resolve-InputPaths $Paths
 
 foreach ($p in $normalizedPaths) {
     Convert-OneFile $p
