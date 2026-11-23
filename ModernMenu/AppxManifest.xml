@@ -19,10 +19,10 @@
   <Dependencies>
     <TargetDeviceFamily Name="Windows.Desktop" MinVersion="10.0.22000.0" MaxVersionTested="10.0.26100.0" />
   </Dependencies>
-  <Resources><Resource Language="zh-TW" /></Resources>
+  <Resources><Resource Language="zh-TW" /><Resource Language="en-US" /></Resources>
   <Applications>
     <Application Id="OfficeToPDF" Executable="OfficeToPDF.exe" EntryPoint="Windows.FullTrustApplication">
-      <uap:VisualElements DisplayName="Right Click Office to PDF" Description="轉換為 PDF 檔案"
+      <uap:VisualElements DisplayName="Right Click Office to PDF" Description="Right Click Office to PDF"
           Square150x150Logo="Logo150.png" Square44x44Logo="Logo44.png" BackgroundColor="transparent" AppListEntry="none" />
       <Extensions>
         <com:Extension Category="windows.comServer">

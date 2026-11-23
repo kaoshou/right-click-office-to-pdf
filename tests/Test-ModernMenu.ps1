@@ -86,7 +86,7 @@ try {
     $id = [guid]$verb.Clsid
     # The mock records the exact arguments that would reach the real UI.
     $sink = Join-Path $work 'Show-ConversionProgress.ps1'
-    foreach ($file in 'Show-ConversionProgress.ps1', 'ProgressControls.cs') {
+    foreach ($file in 'OfficePdfText.ps1', 'Show-ConversionProgress.ps1', 'ProgressControls.cs') {
         if (!(Test-Path -LiteralPath (Join-Path $work $file) -PathType Leaf)) {
             throw "Package is missing a progress UI file: $file"
         }

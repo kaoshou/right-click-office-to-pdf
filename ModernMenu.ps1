@@ -1,5 +1,7 @@
 ﻿param()
 
+. (Join-Path $PSScriptRoot 'OfficePdfText.ps1')
+
 $ModernMenuName = 'Kaoshou.RightClickOfficeToPDF.Menu'
 
 function Get-ExplorerArchitecture {
@@ -20,7 +22,7 @@ function Install-ModernMenu {
     $architecture = Get-ExplorerArchitecture
     $package = Join-Path $SourceDir "ModernMenu\RightClickOfficeToPDF-$architecture.msix"
     if (-not $architecture -or -not (Test-Path -LiteralPath $package -PathType Leaf)) {
-        Write-Warning 'Windows 11 新版選單套件未包含在此安裝來源。可在「顯示其他選項」使用轉檔，或改用正式發行 ZIP。'
+        Write-Warning $OfficePdfText.NoPackage
         return
     }
 
@@ -35,15 +37,15 @@ function Install-ModernMenu {
     }
     $identity = $manifest.Package.Identity
     if ($identity.Name -ne $ModernMenuName -or $identity.ProcessorArchitecture -ne $architecture) {
-        throw 'Windows 11 右鍵選單套件的名稱或架構不符。'
+        throw $OfficePdfText.BadPackage
     }
     if ((-not $hasSignature) -and (-not $DevelopmentMenu)) {
-        throw '這是未簽章的開發套件。請使用正式簽章版，或在已啟用開發人員模式的測試電腦使用 -DevelopmentMenu。'
+        throw $OfficePdfText.Unsigned
     }
 
     $publisherFile = Join-Path $InstallDir 'modern-menu.publisher'
     if ((Test-Path -LiteralPath $publisherFile) -and (Get-Content -LiteralPath $publisherFile -Raw).Trim() -ne $identity.Publisher) {
-        throw '已安裝的右鍵選單來自不同發行者。若要更換，請先移除舊版。'
+        throw $OfficePdfText.Publisher
     }
     $current = Get-AppxPackage -Name $ModernMenuName -ErrorAction Stop |
         Where-Object { $_.Publisher -eq $identity.Publisher -and -not $_.IsResourcePackage } |
@@ -51,7 +53,7 @@ function Install-ModernMenu {
     # Record the package identity before deployment so interrupted installs can be removed.
     Set-Content -LiteralPath $publisherFile -Value $identity.Publisher -Encoding UTF8
     if ($current -and [version]$current.Version -gt [version]$identity.Version) {
-        Write-Host "已保留較新的 Windows 11 右鍵選單 $($current.Version)。"
+        Write-Host ($OfficePdfText.Newer -f $current.Version)
         return
     }
     if ($hasSignature) {
@@ -85,9 +87,9 @@ function Install-ModernMenu {
             try {
                 Add-AppxPackage -Register (Join-Path $layout 'AppxManifest.xml') -ErrorAction Stop
             } catch {
-                throw ("開發套件註冊失敗，請確認 Windows 開發人員模式已啟用。{0}" -f $_.Exception.Message)
+                throw ($OfficePdfText.RegistrationFailed -f $_.Exception.Message)
             }
         }
     }
-    Write-Host 'Windows 11 新版右鍵選單已註冊。若命令在「應用程式擴充功能」內，請至「設定 → 個人化 → 操作功能表 → 應用程式延伸模組」，開啟 Right Click Office to PDF，即可在右鍵第一層使用。'
+    Write-Host $OfficePdfText.Registered
 }

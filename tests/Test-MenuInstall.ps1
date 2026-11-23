@@ -62,8 +62,8 @@ try {
     $current = $null
     $architecture = 'ARM64'
     New-TestPackage arm64
-    Assert-Rejected { Install-ModernMenu @run } '未簽章'
-    Assert-Rejected { Install-ModernMenu @run -DevelopmentMenu } '開發人員模式'
+    Assert-Rejected { Install-ModernMenu @run } $OfficePdfText.Unsigned
+    Assert-Rejected { Install-ModernMenu @run -DevelopmentMenu } ($OfficePdfText.RegistrationFailed -f '')
     Assert ($calls -eq 1) 'Unsigned deployment occurred without explicit development opt-in.'
     $devMode = 1
     Install-ModernMenu @run -DevelopmentMenu

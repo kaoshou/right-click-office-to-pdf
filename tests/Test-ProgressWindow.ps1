@@ -1,4 +1,5 @@
-﻿# Run in an interactive Windows session with Windows PowerShell 5.1.
+﻿param([ValidateSet('en-US','zh-TW')][string]$Language = 'zh-TW')
+# Run in an interactive Windows session with Windows PowerShell 5.1.
 # The test launches only the copied GUI and a fixture converter. Its profile
 # and files are unique to this run, and only its own child windows are queried.
 $ErrorActionPreference = 'Stop'
@@ -33,7 +34,9 @@ $root = Join-Path ([IO.Path]::GetTempPath()) ('rcpdf-ui-' + [Guid]::NewGuid().To
 $testApp = Join-Path $root 'test application'
 $testFiles = Join-Path $root 'test files'
 $children = [Collections.Generic.List[Diagnostics.Process]]::new()
-$guiName = 'Office 轉 PDF'
+[Threading.Thread]::CurrentThread.CurrentUICulture = [Globalization.CultureInfo]::GetCultureInfo($Language)
+. (Join-Path (Split-Path -Parent $PSScriptRoot) 'OfficePdfText.ps1')
+$guiName = $OfficePdfText.Title
 $project = Split-Path -Parent $PSScriptRoot
 
 function Wait-For([scriptblock]$Condition, [int]$Seconds, [string]$Description) {
@@ -52,7 +55,7 @@ function Start-TestWindow([string]$Profile, [string[]]$Names) {
     $quoted = ($paths | ForEach-Object { "'" + $_.Replace("'","''") + "'" }) -join ', '
     $gui = (Join-Path $testApp 'Show-ConversionProgress.ps1').Replace("'","''")
     $entry = Join-Path $testApp ([Guid]::NewGuid().ToString('N') + '.ps1')
-    [IO.File]::WriteAllText($entry, "& '$gui' -Paths @($quoted)", [Text.UTF8Encoding]::new($true))
+    [IO.File]::WriteAllText($entry, "[Threading.Thread]::CurrentThread.CurrentUICulture = [Globalization.CultureInfo]::GetCultureInfo('$Language')`r`n& '$gui' -Paths @($quoted)", [Text.UTF8Encoding]::new($true))
     $start = [Diagnostics.ProcessStartInfo]::new()
     $start.FileName = Join-Path $PSHOME 'powershell.exe'
     $start.Arguments = '-NoLogo -NoProfile -STA -ExecutionPolicy Bypass -File "' + $entry + '"'
@@ -86,7 +89,7 @@ function Get-WindowText($Window) {
     $controls = $Window.FindAll([Windows.Automation.TreeScope]::Descendants, [Windows.Automation.Condition]::TrueCondition)
     $text = foreach ($control in $controls) {
         $control.Current.Name
-        if ($control.Current.Name -eq '輸出位置或錯誤原因' -and $control.Current.NativeWindowHandle) {
+        if ($control.Current.Name -eq $OfficePdfText.Details -and $control.Current.NativeWindowHandle) {
             [TestWindowText]::Read([IntPtr]$control.Current.NativeWindowHandle)
         }
     }
@@ -96,7 +99,7 @@ function Get-WindowText($Window) {
 try {
     [void][IO.Directory]::CreateDirectory($testApp)
     [void][IO.Directory]::CreateDirectory($testFiles)
-    foreach ($file in 'Show-ConversionProgress.ps1', 'ProgressControls.cs') {
+    foreach ($file in 'OfficePdfText.ps1', 'Show-ConversionProgress.ps1', 'ProgressControls.cs') {
         Copy-Item -LiteralPath (Join-Path $project $file) -Destination $testApp
     }
     $fake = @'
@@ -159,7 +162,7 @@ exit 0
     if ($windows.Count -ne 1) { throw 'Expected one progress window for the three launches.' }
     Wait-For {
         $activeText = Get-WindowText $windows[0]
-        $activeText.Contains('正在轉換') -and $activeText.Contains('等候中') -and $activeText.Contains('0 / 3')
+        $activeText.Contains(($OfficePdfText.Active -f '').Trim()) -and $activeText.Contains($OfficePdfText.Queued) -and $activeText.Contains('0 / 3')
     } 5 'active file, queued files and progress to be visible'
     [IO.File]::WriteAllText((Join-Path $successProfile 'release'), '')
     Wait-For { @(Get-Events $successProfile | Where-Object { $_ -like 'end *' }).Count -ge 3 } 12 'three file results'
@@ -205,7 +208,7 @@ exit 0
     # Send standard list navigation to this window's list only, independent of
     # the foreground app. Both neighbouring rows failed for different reasons.
     $listCondition = [Windows.Automation.PropertyCondition]::new(
-        [Windows.Automation.AutomationElement]::NameProperty, '轉檔檔案與狀態')
+        [Windows.Automation.AutomationElement]::NameProperty, $OfficePdfText.FileList)
     $listElement = $window.FindFirst([Windows.Automation.TreeScope]::Descendants, $listCondition)
     $listHandle = [IntPtr]$listElement.Current.NativeWindowHandle
     if ($listHandle -eq [IntPtr]::Zero) { throw 'The accessible file list has no native window handle.' }
@@ -217,7 +220,7 @@ exit 0
         throw "The window closed after displaying failure details (exit code $($failedWindow.ExitCode))."
     }
     $closeCondition = [Windows.Automation.AndCondition]::new(
-        [Windows.Automation.PropertyCondition]::new([Windows.Automation.AutomationElement]::NameProperty, '關閉'),
+        [Windows.Automation.PropertyCondition]::new([Windows.Automation.AutomationElement]::NameProperty, $OfficePdfText.Close),
         [Windows.Automation.PropertyCondition]::new([Windows.Automation.AutomationElement]::ControlTypeProperty, [Windows.Automation.ControlType]::Button))
     $close = $window.FindFirst([Windows.Automation.TreeScope]::Descendants, $closeCondition)
     $close.GetCurrentPattern([Windows.Automation.InvokePattern]::Pattern).Invoke()

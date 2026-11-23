@@ -1,5 +1,7 @@
 ﻿# Install for the current user. -DevelopmentMenu is for testing an unsigned build.
 param([switch]$DevelopmentMenu)
+. (Join-Path $PSScriptRoot 'OfficePdfText.ps1')
+
 $ErrorActionPreference = "Stop"
 
 # Use the native Windows PowerShell Appx module even when launched from pwsh or WOW64.
@@ -18,6 +20,7 @@ New-Item -ItemType Directory -Path $installDir -Force | Out-Null
 $sourceDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 
 $files = @(
+    "OfficePdfText.ps1",
     "Convert-OfficeToPdf.ps1",
     "Invoke-RightClickOfficeToPDF.ps1",
     "Show-ConversionProgress.ps1",
@@ -41,7 +44,7 @@ foreach ($file in $files) {
 Remove-Item -LiteralPath (Join-Path $installDir "RightClickOfficeToPDF.cmd") -Force -ErrorAction SilentlyContinue
 Remove-Item -LiteralPath (Join-Path $installDir "Launch-RightClickOfficeToPDF.vbs") -Force -ErrorAction SilentlyContinue
 
-$menuText = "轉換為 PDF 檔案"
+$menuText = $OfficePdfText.Menu
 
 $powershellExe = Join-Path $env:WINDIR "System32\WindowsPowerShell\v1.0\powershell.exe"
 $launcher = Join-Path $installDir 'Show-ConversionProgress.ps1'
@@ -102,13 +105,12 @@ Write-Host ""
 try {
     Install-ModernMenu -SourceDir $sourceDir -InstallDir $installDir -DevelopmentMenu:$DevelopmentMenu
 } catch {
-    Write-Warning ("Windows 11 新版選單安裝失敗。可在「顯示其他選項」使用轉檔。原因：{0}" -f $_.Exception.Message)
+    Write-Warning ($OfficePdfText.InstallFailed -f $_.Exception.Message)
 }
-Write-Host "Installed: $menuText"
-Write-Host "Install directory: $installDir"
+Write-Host ($OfficePdfText.Installed -f $menuText)
+Write-Host ($OfficePdfText.Location -f $installDir)
 Write-Host ""
-Write-Host "Usage:"
-Write-Host "Right click one or multiple supported files -> $menuText"
+Write-Host ($OfficePdfText.UseMenu -f $menuText)
 Write-Host ""
-Write-Host "Supported extensions:"
+Write-Host $OfficePdfText.Extensions
 Write-Host ($extensions -join ", ")

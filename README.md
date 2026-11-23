@@ -10,6 +10,8 @@
 
 ---
 
+介面會依 Windows 顯示語言使用繁體中文或英文，其他語言使用英文。
+
 ## 主要功能
 
 - 單檔、多檔共用一個進度視窗，顯示目前檔名、已處理數量及每份檔案的結果。
@@ -21,6 +23,8 @@
 ---
 
 ## 單行指令快速安裝 / 移除
+
+目前首頁指令可安裝傳統右鍵選單。Windows 11 新版選單需要內含受信任簽章 MSIX 的正式 ZIP，1.1.0 正式版尚待簽章發行。
 
 使用者可免手動下載 ZIP，只要開啟 **Windows PowerShell**，執行下列指令即可。
 
@@ -151,18 +155,6 @@ powershell -ExecutionPolicy Bypass -File .\Uninstall-RightClickOfficeToPDF.ps1
 
 ---
 
-## 專案資訊
-
-- Project: `right-click-office-to-pdf`
-- Version: `1.1.0`
-- Platform: Windows 10 / Windows 11
-- Runtime: Windows PowerShell 5.1 或 PowerShell 7+
-- Developer: Yu-Han Cheng（鄭郁翰）
-- 本版的 Office 轉檔流程、批次進度視窗及 Windows 11 右鍵選單由 OpenAI Codex 協助開發與測試。
-- GitHub: `https://github.com/kaoshou/right-click-office-to-pdf`
-
----
-
 ## 免責聲明
 
 本專案最初僅為個人使用需求所開發，現以「現狀（AS IS）」方式提供，不附任何明示或暗示之保證，包含但不限於商業適售性、特定用途適用性及不侵權保證。
@@ -171,3 +163,5 @@ powershell -ExecutionPolicy Bypass -File .\Uninstall-RightClickOfficeToPDF.ps1
 本專案與 Microsoft、Adobe、LibreOffice、The Document Foundation、OSSII 或其他第三方公司或組織無任何附屬、授權、贊助或背書關係。
 文件轉換結果仍可能因 Office 版本、字型、版面設定或第三方軟體環境差異而有所不同。對於重要文件，請務必自行再次確認轉換結果之正確性。
 繼續使用本軟體即視為您已閱讀、理解並同意上述內容。
+
+本版由 OpenAI Codex 協助開發與測試。

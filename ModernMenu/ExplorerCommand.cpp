@@ -42,7 +42,7 @@ HRESULT GetPaths(IShellItemArray* items, std::vector<std::wstring>* paths) {
 class Command final : public RuntimeClass<RuntimeClassFlags<ClassicCom>, IExplorerCommand>, private ObjectCount {
 public:
     IFACEMETHODIMP GetTitle(IShellItemArray*, LPWSTR* title) override {
-        return SHStrDupW(L"轉換為 PDF 檔案", title);
+        return SHStrDupW(MenuText(L"轉換為 PDF 檔案", L"Convert to PDF"), title);
     }
     IFACEMETHODIMP GetIcon(IShellItemArray*, LPWSTR* icon) override {
         return SHStrDupW(L"shell32.dll,70", icon);

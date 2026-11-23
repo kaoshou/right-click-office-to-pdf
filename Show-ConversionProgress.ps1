@@ -3,6 +3,8 @@
     [string[]]$Paths
 )
 
+. (Join-Path $PSScriptRoot 'OfficePdfText.ps1')
+
 $ErrorActionPreference = 'Stop'
 Add-Type -AssemblyName System.Windows.Forms, System.Drawing
 
@@ -30,13 +32,13 @@ function Receive-Requests {
             try {
                 $batch = [IO.File]::ReadAllText($request) | ConvertFrom-Json
                 if (!$batch.Paths -or @($batch.Paths | Where-Object { $_ -isnot [string] -or ![IO.Path]::IsPathRooted($_) }).Count) {
-                    throw '無法讀取檔案清單，請重新選取文件。'
+                    throw $OfficePdfText.BadList
                 }
             } catch [IO.IOException] {
                 continue
             } catch {
-                $row = $list.Items.Add('無法讀取的轉檔要求')
-                $null = $row.SubItems.Add('未完成')
+                $row = $list.Items.Add($OfficePdfText.BadRequest)
+                $null = $row.SubItems.Add($OfficePdfText.Failed)
                 $row.Tag = $_.Exception.Message
                 $detail.Text = $row.Tag
                 $state.Completed++
@@ -47,7 +49,7 @@ function Receive-Requests {
             foreach ($path in $batch.Paths) {
                 if ($seen.Add($path)) {
                     $row = $list.Items.Add([IO.Path]::GetFileName($path))
-                    $null = $row.SubItems.Add('等候中')
+                    $null = $row.SubItems.Add($OfficePdfText.Queued)
                     $row.ToolTipText = $path
                     $row.Tag = $path
                     $queue.Enqueue([pscustomobject]@{ Path = $path; Row = $row })
@@ -61,13 +63,13 @@ function Receive-Requests {
 
 function Start-NextFile {
     $task = $queue.Dequeue()
-    $task.Row.SubItems[1].Text = '轉換中'
+    $task.Row.SubItems[1].Text = $OfficePdfText.Working
     $task.Row.ForeColor = [Drawing.Color]::FromArgb(24, 86, 162)
     $task.Row.EnsureVisible()
-    $activity.Text = "正在轉換  $([IO.Path]::GetFileName($task.Path))"
+    $activity.Text = ($OfficePdfText.Active -f [IO.Path]::GetFileName($task.Path))
     $activity.ForeColor = $ink
     $busy.Visible = $true
-    $closeButton.Text = '最小化'
+    $closeButton.Text = $OfficePdfText.Minimize
     $worker = [PowerShell]::Create()
     $worker.Runspace = $runspace
     $box = [hashtable]::Synchronized(@{})
@@ -90,14 +92,14 @@ function Finish-CurrentFile {
         $result = $current.Box.Result
         if (!$result) {
             if ($current.Worker.Streams.Error.Count) { throw $current.Worker.Streams.Error[0] }
-            throw '轉檔程式未回報結果。'
+            throw $OfficePdfText.NoResult
         }
         if ($result.Status -ne 'Success') { throw $result.Message }
-        $row.SubItems[1].Text = '已完成'
+        $row.SubItems[1].Text = $OfficePdfText.Done
         $row.ForeColor = [Drawing.Color]::FromArgb(21, 107, 74)
         $row.Tag = $result.OutputPath
     } catch {
-        $row.SubItems[1].Text = '未完成'
+        $row.SubItems[1].Text = $OfficePdfText.Failed
         $row.ForeColor = [Drawing.Color]::FromArgb(157, 48, 48)
         $row.Tag = $_.Exception.Message
         $state.Failures++
@@ -106,7 +108,7 @@ function Finish-CurrentFile {
         $row.ToolTipText = $row.Tag
         if ($row.Selected) {
             $detail.Text = $row.Tag
-            $openFolder.Visible = $row.SubItems[1].Text -eq '已完成'
+            $openFolder.Visible = $row.SubItems[1].Text -eq $OfficePdfText.Done
         }
         $null = $seen.Remove($current.Task.Path)
         $current.Worker.Dispose()
@@ -116,7 +118,7 @@ function Finish-CurrentFile {
 }
 
 try {
-    if (!$Paths) { throw '請先在檔案總管選取要轉換的 Office 檔案。' }
+    if (!$Paths) { throw $OfficePdfText.SelectFiles }
     $fullPaths = @(foreach ($path in $Paths) {
         if ($path) { $ExecutionContext.SessionState.Path.GetUnresolvedProviderPathFromPSPath($path) }
     })
@@ -149,7 +151,7 @@ try {
     $muted = if ($highContrast) { $ink } else { [Drawing.ColorTranslator]::FromHtml('#506479') }
     $blue = if ($highContrast) { [Drawing.SystemColors]::Highlight } else { [Drawing.ColorTranslator]::FromHtml('#155FC5') }
     $form = [Windows.Forms.Form]::new()
-    $form.Text = 'Office 轉 PDF'
+    $form.Text = $OfficePdfText.Title
     $form.Font = [Drawing.Font]::new('Microsoft JhengHei UI', 10)
     $form.BackColor = [Drawing.SystemColors]::Window
     $form.ForeColor = $ink
@@ -184,7 +186,7 @@ try {
     $heading = New-Label
     $heading.Dock = 'Fill'
     $heading.Font = [Drawing.Font]::new($form.Font.FontFamily, 19, [Drawing.FontStyle]::Bold)
-    $heading.Text = '轉換為 PDF'
+    $heading.Text = $OfficePdfText.Heading
     $count = New-Label
     $count.Dock = 'Right'
     $count.Width = 190
@@ -194,7 +196,7 @@ try {
     $header.Controls.Add($count)
     Add-Row $header 52
     $progress = [OfficePdf.BatchProgress]::new()
-    $progress.AccessibleName = '整批轉檔進度'
+    $progress.AccessibleName = $OfficePdfText.Progress
     $progress.Margin = [Windows.Forms.Padding]::new(0, 6, 0, 8)
     Add-Row $progress 21
     $activityPanel = [Windows.Forms.Panel]::new()
@@ -207,22 +209,22 @@ try {
     $busy.ForeColor = $blue
     $busy.Text = '●'
     $busy.AccessibleRole = 'Graphic'
-    $busy.AccessibleName = '處理中'
+    $busy.AccessibleName = $OfficePdfText.Busy
     $activity = New-Label
     $activity.Dock = 'Fill'
     $activityPanel.Controls.Add($activity)
     $activityPanel.Controls.Add($busy)
     Add-Row $activityPanel 52
     $list = [OfficePdf.FileList]::new()
-    $list.AccessibleName = '轉檔檔案與狀態'
+    $list.AccessibleName = $OfficePdfText.FileList
     $list.Margin = [Windows.Forms.Padding]::Empty
     $list.View = 'Details'
     $list.FullRowSelect = $true
     $list.MultiSelect = $false
     $list.ShowItemToolTips = $true
     $list.HideSelection = $false
-    $null = $list.Columns.Add('檔案名稱', 370)
-    $null = $list.Columns.Add('狀態', 112)
+    $null = $list.Columns.Add($OfficePdfText.Filename, 370)
+    $null = $list.Columns.Add($OfficePdfText.Status, 112)
     $list.add_Resize({ $list.Columns[0].Width = [Math]::Max(100, $list.ClientSize.Width - $list.Columns[1].Width - 1) })
     Add-Row $list 0
     $detail = [Windows.Forms.TextBox]::new()
@@ -233,7 +235,7 @@ try {
     $detail.BackColor = $form.BackColor
     $detail.ForeColor = $muted
     $detail.Margin = [Windows.Forms.Padding]::new(0, 8, 0, 0)
-    $detail.AccessibleName = '輸出位置或錯誤原因'
+    $detail.AccessibleName = $OfficePdfText.Details
     $detail.add_TextChanged({
         $lines = $detail.GetLineFromCharIndex([Math]::Max(0, $detail.TextLength - 1)) + 1
         $detail.ScrollBars = if ($lines * $detail.Font.Height -gt $detail.ClientSize.Height) { 'Vertical' } else { 'None' }
@@ -243,19 +245,19 @@ try {
         if ($list.SelectedItems.Count) {
             $selected = $list.SelectedItems[0]
             $detail.Text = $selected.Tag
-            $openFolder.Visible = $selected.SubItems[1].Text -eq '已完成'
+            $openFolder.Visible = $selected.SubItems[1].Text -eq $OfficePdfText.Done
         }
     })
     Add-Row $detail 48
     $footer = [Windows.Forms.Panel]::new()
     $footer.Margin = [Windows.Forms.Padding]::Empty
     $destination = New-Label
-    $destination.Text = 'PDF 儲存在原檔案旁'
+    $destination.Text = $OfficePdfText.Destination
     $destination.ForeColor = $muted
     $destination.Dock = 'Fill'
     $footer.Controls.Add($destination)
     $openFolder = [Windows.Forms.Button]::new()
-    $openFolder.Text = '開啟資料夾'
+    $openFolder.Text = $OfficePdfText.OpenFolder
     $openFolder.Visible = $false
     $openFolder.Dock = 'Right'
     $openFolder.Width = 115
@@ -266,7 +268,7 @@ try {
         if (!$list.SelectedItems.Count) { return }
         $folder = [IO.Path]::GetDirectoryName($list.SelectedItems[0].Tag)
         try {
-            if (![IO.Directory]::Exists($folder)) { throw '找不到輸出資料夾。' }
+            if (![IO.Directory]::Exists($folder)) { throw $OfficePdfText.MissingFolder }
             $start = [Diagnostics.ProcessStartInfo]::new($folder)
             $start.UseShellExecute = $true
             [void][Diagnostics.Process]::Start($start)
@@ -274,7 +276,7 @@ try {
     })
     $footer.Controls.Add($openFolder)
     $closeButton = [Windows.Forms.Button]::new()
-    $closeButton.Text = '關閉'
+    $closeButton.Text = $OfficePdfText.Close
     $closeButton.Width = 88
     $closeButton.Dock = 'Right'
     if (!$highContrast) {
@@ -297,7 +299,7 @@ try {
             Receive-Requests
             if ($state.Current) { Finish-CurrentFile }
             if (!$state.Current -and $queue.Count) { Start-NextFile }
-            $count.Text = "已處理 $($state.Completed) / $($list.Items.Count) 份"
+            $count.Text = ($OfficePdfText.Count -f $state.Completed, $list.Items.Count)
             $progress.Maximum = [Math]::Max(1, $list.Items.Count)
             $progress.Value = $state.Completed
             if ($state.Current -and !$highContrast) {
@@ -305,11 +307,11 @@ try {
             }
             if (!$state.Current -and !$queue.Count) {
                 $busy.Visible = $false
-                $closeButton.Text = '關閉'
+                $closeButton.Text = $OfficePdfText.Close
                 if ($state.Failures) {
-                    $activity.Text = "有 $($state.Failures) 份未完成，點選檔案可查看原因。"
+                    $activity.Text = ($OfficePdfText.Errors -f $state.Failures)
                 } else {
-                    $activity.Text = '轉換完成，PDF 已儲存在原檔案旁。'
+                    $activity.Text = $OfficePdfText.Finished
                     if (!$state.CloseAfter) { $state.CloseAfter = [datetime]::UtcNow.AddSeconds(3) }
                     if (!$list.SelectedItems.Count -and [datetime]::UtcNow -ge $state.CloseAfter) { $form.Close() }
                 }
@@ -317,8 +319,8 @@ try {
         } catch {
             $timer.Stop()
             $detail.Text = $_.Exception.Message
-            $activity.Text = '無法更新轉檔進度。'
-            $closeButton.Text = '關閉'
+            $activity.Text = $OfficePdfText.UpdateError
+            $closeButton.Text = $OfficePdfText.Close
         }
     })
     $form.add_FormClosing({
@@ -327,7 +329,7 @@ try {
         try {
             if ($timer.Enabled -and ($state.Current -or $queue.Count -or [IO.Directory]::GetFiles($inbox, '*.json').Length)) {
                 $eventArgs.Cancel = $true
-                $detail.Text = '轉檔仍在進行。你可以先將視窗最小化。'
+                $detail.Text = $OfficePdfText.StillWorking
             } elseif ($state.OwnsWindow) {
                 $owner.ReleaseMutex()
                 $state.OwnsWindow = $false
@@ -337,7 +339,7 @@ try {
     $timer.Start()
     [void]$form.ShowDialog()
 } catch {
-    [void][Windows.Forms.MessageBox]::Show($_.Exception.Message, 'Office 轉 PDF', 'OK', 'Error')
+    [void][Windows.Forms.MessageBox]::Show($_.Exception.Message, $OfficePdfText.Title, 'OK', 'Error')
 } finally {
     if ($timer) { $timer.Dispose() }
     if ($form) { $form.Dispose() }
