@@ -1,9 +1,10 @@
 ﻿param(
-    [Parameter(ValueFromRemainingArguments = $true)]
-    [string[]]$Paths
+    [Parameter(Position = 0, ValueFromRemainingArguments = $true)]
+    [string[]]$Paths,
+    [Parameter()][scriptblock]$OnFileResult
 )
 
-$ErrorActionPreference = "Continue"
+$ErrorActionPreference = "Stop"
 
 $script:TotalCount = 0
 $script:SuccessCount = 0
@@ -42,7 +43,7 @@ function Resolve-InputPaths {
 
         $candidate = $candidate.Trim().Trim('"')
 
-        if (Test-Path -LiteralPath $candidate) {
+        if (Test-Path -LiteralPath $candidate -ErrorAction SilentlyContinue) {
             try { $result.Add((Resolve-Path -LiteralPath $candidate).Path) } catch { $result.Add($candidate) }
             continue
         }
@@ -54,7 +55,7 @@ function Resolve-InputPaths {
             $next = ([string]$RawPaths[$j]).Trim().Trim('"')
             $joined = $joined + " " + $next
 
-            if (Test-Path -LiteralPath $joined) {
+            if (Test-Path -LiteralPath $joined -ErrorAction SilentlyContinue) {
                 try { $result.Add((Resolve-Path -LiteralPath $joined).Path) } catch { $result.Add($joined) }
                 $i = $j
                 $found = $true
@@ -71,372 +72,222 @@ function Resolve-InputPaths {
     return @($result.ToArray())
 }
 
-function Get-TargetPdfPath {
-    param([string]$InputPath)
+function Assert-PdfOutput {
+    param([string]$Path)
 
-    $directory = Split-Path -Parent $InputPath
-    $filenameWithoutExt = [System.IO.Path]::GetFileNameWithoutExtension($InputPath)
-    $candidate = Join-Path $directory ($filenameWithoutExt + ".pdf")
-
-    if (-not (Test-Path -LiteralPath $candidate)) {
-        return $candidate
-    }
-
-    for ($i = 1; $i -le 9999; $i++) {
-        $candidate = Join-Path $directory ("{0} ({1}).pdf" -f $filenameWithoutExt, $i)
-        if (-not (Test-Path -LiteralPath $candidate)) {
-            return $candidate
+    $stream = [IO.File]::OpenRead($Path)
+    try {
+        $header = New-Object byte[] 5
+        if ($stream.Read($header, 0, 5) -ne 5 -or [Text.Encoding]::ASCII.GetString($header) -ne '%PDF-') {
+            throw 'The converter did not write a PDF header.'
         }
-    }
-
-    $timestamp = Get-Date -Format "yyyyMMdd-HHmmss"
-    return (Join-Path $directory ("{0}-{1}.pdf" -f $filenameWithoutExt, $timestamp))
-}
-
-function Test-ComAvailable {
-    param([string]$ProgId)
-    try {
-        $type = [type]::GetTypeFromProgID($ProgId)
-        return ($null -ne $type)
-    } catch {
-        return $false
-    }
-}
-
-function Find-Soffice {
-    $candidates = New-Object System.Collections.Generic.List[string]
-
-    if ($env:SOFFICE_PATH) {
-        $candidates.Add($env:SOFFICE_PATH)
-    }
-
-    try {
-        $cmd = Get-Command "soffice.exe" -ErrorAction SilentlyContinue
-        if ($null -ne $cmd -and $cmd.Source) { $candidates.Add($cmd.Source) }
-    } catch {}
-
-    $programFiles = @()
-    if ($env:ProgramFiles) { $programFiles += $env:ProgramFiles }
-    if (${env:ProgramFiles(x86)}) { $programFiles += ${env:ProgramFiles(x86)} }
-
-    foreach ($pf in $programFiles) {
-        $candidates.Add((Join-Path $pf "LibreOffice\program\soffice.exe"))
-        $candidates.Add((Join-Path $pf "OpenOffice 4\program\soffice.exe"))
-        $candidates.Add((Join-Path $pf "Apache OpenOffice 4\program\soffice.exe"))
-        $candidates.Add((Join-Path $pf "OxOffice\program\soffice.exe"))
-        $candidates.Add((Join-Path $pf "OSSII\OxOffice\program\soffice.exe"))
-    }
-
-    foreach ($candidate in $candidates | Select-Object -Unique) {
-        if ($candidate -and (Test-Path -LiteralPath $candidate)) {
-            return $candidate
+        $tail = New-Object byte[] ([int][Math]::Min(1024L, $stream.Length))
+        $stream.Position = $stream.Length - $tail.Length
+        [void]$stream.Read($tail, 0, $tail.Length)
+        if ([Text.Encoding]::ASCII.GetString($tail) -notmatch '%%EOF[\x00\t\n\f\r ]*\z') {
+            throw 'The PDF is incomplete (missing end-of-file marker).'
         }
+    } finally {
+        $stream.Dispose()
     }
-    return $null
 }
 
-function Convert-WithSoffice {
-    param([string]$InputPath)
+function Publish-Pdf {
+    param([string]$PdfPath, [string]$InputPath)
 
-    $soffice = Find-Soffice
-    if (-not $soffice) {
-        Write-Log "Fallback failed: soffice.exe was not found."
-        return $false
-    }
-
-    $tempOutDir = Join-Path ([System.IO.Path]::GetTempPath()) ("RightClickOfficeToPDF-out-" + [Guid]::NewGuid().ToString("N"))
-    $tempProfileDir = Join-Path ([System.IO.Path]::GetTempPath()) ("RightClickOfficeToPDF-lo-profile-" + [Guid]::NewGuid().ToString("N"))
-
+    # Stage on the destination volume. File.Move claims the final name without
+    # overwriting a PDF produced by another Explorer invocation.
+    $directory = [IO.Path]::GetDirectoryName($InputPath)
+    $name = [IO.Path]::GetFileNameWithoutExtension($InputPath)
+    $stage = Join-Path $directory ([IO.Path]::GetRandomFileName() + '.tmp')
+    $writer = [IO.File]::Open($stage, 'CreateNew', 'Write', 'None')
     try {
-        New-Item -ItemType Directory -Path $tempOutDir -Force | Out-Null
-        New-Item -ItemType Directory -Path $tempProfileDir -Force | Out-Null
-
-        $pdfPath = Get-TargetPdfPath $InputPath
-        $profileUri = (New-Object System.Uri($tempProfileDir)).AbsoluteUri
-
-        Write-Log "Fallback engine: $soffice"
-        $args = @(
-            "--headless",
-            "--nologo",
-            "--nofirststartwizard",
-            "-env:UserInstallation=$profileUri",
-            "--convert-to", "pdf",
-            "--outdir", $tempOutDir,
-            $InputPath
-        )
-
-        $output = & $soffice @args 2>&1
-        $exitCode = $LASTEXITCODE
-
-        $expectedTempPdf = Join-Path $tempOutDir ([System.IO.Path]::GetFileNameWithoutExtension($InputPath) + ".pdf")
-        $actualTempPdf = $expectedTempPdf
-
-        if (-not (Test-Path -LiteralPath $actualTempPdf)) {
-            $foundPdf = Get-ChildItem -LiteralPath $tempOutDir -Filter "*.pdf" -File -ErrorAction SilentlyContinue | Select-Object -First 1
-            if ($null -ne $foundPdf) {
-                $actualTempPdf = $foundPdf.FullName
+        try {
+            $reader = [IO.File]::OpenRead($PdfPath)
+            try { $reader.CopyTo($writer) } finally { $reader.Dispose() }
+        } finally {
+            $writer.Dispose()
+        }
+        for ($index = 0; ; $index++) {
+            $leaf = if ($index -eq 0) { "$name.pdf" } else { "$name ($index).pdf" }
+            $target = Join-Path $directory $leaf
+            try {
+                [IO.File]::Move($stage, $target)
+                return $target
+            } catch [IO.IOException] {
+                if (![IO.File]::Exists($target) -and ![IO.Directory]::Exists($target)) { throw }
             }
         }
-
-        if (Test-Path -LiteralPath $actualTempPdf) {
-            Move-Item -LiteralPath $actualTempPdf -Destination $pdfPath -Force
-            Write-Log "OK using LibreOffice/OpenOffice/OxOffice fallback: $pdfPath"
-            return $true
-        }
-
-        Write-Log "Fallback conversion failed: $InputPath"
-        if ($output) { Write-Log ($output | Out-String) }
-        Write-Log "Exit code: $exitCode"
-        return $false
-    } catch {
-        Write-Log "Fallback exception: $($_.Exception.Message)"
-        return $false
     } finally {
-        try { Remove-Item -LiteralPath $tempOutDir -Recurse -Force -ErrorAction SilentlyContinue } catch {}
-        try { Remove-Item -LiteralPath $tempProfileDir -Recurse -Force -ErrorAction SilentlyContinue } catch {}
+        if ([IO.File]::Exists($stage)) { [IO.File]::Delete($stage) }
     }
 }
 
 function Convert-WordToPdf {
-    param([string]$InputPath)
+    param([string]$InputPath, [string]$PdfPath)
 
-    if (-not (Test-ComAvailable "Word.Application")) {
-        Write-Log "Microsoft Word is not available."
-        return $false
-    }
-
-    $word = $null
-    $doc = $null
-
+    $word = $documents = $doc = $null
     try {
-        [string]$pdfPath = [string](Get-TargetPdfPath $InputPath)
-
         $word = New-Object -ComObject Word.Application
-
-        # Keep Word hidden during conversion.
         $word.Visible = $false
         $word.DisplayAlerts = 0
-
-        try { $word.AutomationSecurity = 3 } catch {}
-
-        Write-Log "Using Microsoft Word..."
-        Write-Log "Output: $pdfPath"
-
-        # Use a simple Open call for better compatibility across Office versions.
-        $doc = $word.Documents.Open($InputPath)
-
-        # Word constants:
-        # 17 = wdFormatPDF
-        # Use SaveAs2 first. On some Win10 + Office COM environments,
-        # SaveAs([ref]$pdfPath, [ref]17) may throw a psobject/Object conversion error.
+        $word.AutomationSecurity = 3
+        $documents = $word.Documents
         try {
-            $doc.SaveAs2($pdfPath, 17)
+            # Do not request a write lock or add the file to Recent Documents.
+            $doc = $documents.Open($InputPath, $false, $true, $false, '')
+        } catch {
+            Write-Log "Word open failed; retrying read-only with OpenAndRepair: $($_.Exception.Message)"
+            $m = [Type]::Missing
+            $doc = $documents.Open($InputPath, $false, $true, $false, '', $m, $false,
+                                   $m, $m, $m, $m, $false, $m, $true, $m, $true)
         }
-        catch {
-            Write-Log "Word SaveAs2 failed, retrying SaveAs with typed reference parameters: $($_.Exception.Message)"
-
-            $fileNameObj = [ref]([object]$pdfPath)
-            $formatObj = [ref]([object]17)
-            $doc.SaveAs($fileNameObj, $formatObj)
+        try {
+            $doc.ExportAsFixedFormat($PdfPath, 17) # wdExportFormatPDF
+        } catch {
+            Write-Log "Word PDF export failed; trying SaveAs: $($_.Exception.Message)"
+            [IO.File]::Delete($PdfPath)
+            try { $doc.SaveAs2($PdfPath, 17) }
+            catch { $doc.SaveAs([ref]([object]$PdfPath), [ref]([object]17)) }
         }
-
-        if (Test-Path -LiteralPath $pdfPath) {
-            Write-Log "OK using Microsoft Word: $pdfPath"
-            return $true
-        }
-
-        Write-Log "Microsoft Word did not create PDF."
-        return $false
-    }
-    catch {
-        Write-Log "Microsoft Word conversion failed: $($_.Exception.Message)"
-        return $false
-    }
-    finally {
+    } finally {
         if ($null -ne $doc) {
             try { $doc.Close($false) } catch {}
             Release-ComObject $doc
         }
-
+        Release-ComObject $documents
         if ($null -ne $word) {
-            try { $word.Quit() } catch {}
+            try { $word.Quit(0) } catch {}
             Release-ComObject $word
         }
-
-        [GC]::Collect()
-        [GC]::WaitForPendingFinalizers()
     }
 }
 
-
 function Convert-ExcelToPdf {
-    param([string]$InputPath)
+    param([string]$InputPath, [string]$PdfPath)
 
-    if (-not (Test-ComAvailable "Excel.Application")) {
-        Write-Log "Microsoft Excel is not available."
-        return $false
-    }
-
-    $excel = $null
-    $workbook = $null
-
+    $excel = $workbooks = $workbook = $null
     try {
-        $pdfPath = Get-TargetPdfPath $InputPath
-
         $excel = New-Object -ComObject Excel.Application
         $excel.Visible = $false
         $excel.DisplayAlerts = $false
-
-        try { $excel.AutomationSecurity = 3 } catch {}
-        try { $excel.AskToUpdateLinks = $false } catch {}
-        try { $excel.EnableEvents = $false } catch {}
-
-        Write-Log "Using Microsoft Excel..."
-        Write-Log "Output: $pdfPath"
-
-        # 最精簡開啟方式，比帶一堆參數更穩
-        $workbook = $excel.Workbooks.Open($InputPath)
-
-        # 0 = xlTypePDF
-        $workbook.ExportAsFixedFormat(0, $pdfPath)
-
-        if (Test-Path -LiteralPath $pdfPath) {
-            Write-Log "OK using Microsoft Excel: $pdfPath"
-            return $true
-        }
-
-        Write-Log "Microsoft Excel did not create PDF."
-        return $false
-    }
-    catch {
-        Write-Log "Microsoft Excel conversion failed: $($_.Exception.Message)"
-        return $false
-    }
-    finally {
+        $excel.AutomationSecurity = 3
+        $excel.AskToUpdateLinks = $false
+        $excel.EnableEvents = $false
+        $workbooks = $excel.Workbooks
+        $workbook = $workbooks.Open($InputPath, 0, $true)
+        $workbook.ExportAsFixedFormat(0, $PdfPath) # xlTypePDF
+    } finally {
         if ($null -ne $workbook) {
             try { $workbook.Close($false) } catch {}
             Release-ComObject $workbook
         }
-
+        Release-ComObject $workbooks
         if ($null -ne $excel) {
             try { $excel.Quit() } catch {}
             Release-ComObject $excel
         }
-
-        [GC]::Collect()
-        [GC]::WaitForPendingFinalizers()
     }
 }
 
-
 function Convert-PowerPointToPdf {
-    param([string]$InputPath)
+    param([string]$InputPath, [string]$PdfPath)
 
-    if (-not (Test-ComAvailable "PowerPoint.Application")) {
-        Write-Log "Microsoft PowerPoint is not available."
-        return $false
-    }
-
-    $powerpoint = $null
-    $presentation = $null
-
+    $powerpoint = $presentations = $presentation = $null
+    # PowerPoint can share an application between Explorer invocations. Serialize
+    # the temporary application-wide macro setting and restore it after opening.
+    $openLock = [Threading.Mutex]::new($false, 'Local\RightClickOfficeToPDF-PowerPointOpen')
+    $locked = $false
     try {
-        [string]$pdfPath = [string](Get-TargetPdfPath $InputPath)
-
-        $powerpoint = New-Object -ComObject PowerPoint.Application
-        try { $powerpoint.AutomationSecurity = 3 } catch {}
-
-        Write-Log "Using Microsoft PowerPoint..."
-        Write-Log "Output: $pdfPath"
-
-        # Presentations.Open(FileName, ReadOnly, Untitled, WithWindow)
-        $presentation = $powerpoint.Presentations.Open($InputPath, -1, 0, 0)
-
-        # 32 = ppSaveAsPDF
-        # Do not use ExportAsFixedFormat here. It can throw int/Object COM conversion errors.
-        $presentation.SaveAs($pdfPath, 32)
-
-        if (Test-Path -LiteralPath $pdfPath) {
-            Write-Log "OK using Microsoft PowerPoint: $pdfPath"
-            return $true
+        try { $locked = $openLock.WaitOne(30000) }
+        catch [Threading.AbandonedMutexException] { $locked = $true }
+        if (!$locked) { throw 'Another PowerPoint conversion is still opening a presentation.' }
+        try {
+            $powerpoint = New-Object -ComObject PowerPoint.Application
+            $presentations = $powerpoint.Presentations
+            $previousSecurity = $powerpoint.AutomationSecurity
+            $powerpoint.AutomationSecurity = 3
+            try {
+                # Untitled opens a copy, including when this file is open for editing.
+                try { $presentation = $presentations.Open($InputPath, -1, -1, 0) }
+                catch {
+                    Write-Log "PowerPoint open failed; retrying read-only with repair: $($_.Exception.Message)"
+                    $presentation = $presentations.Open2007($InputPath, -1, -1, 0, -1)
+                }
+            } finally {
+                $powerpoint.AutomationSecurity = $previousSecurity
+            }
+        } finally {
+            $openLock.ReleaseMutex()
         }
-
-        Write-Log "Microsoft PowerPoint did not create PDF."
-        return $false
-    }
-    catch {
-        Write-Log "Microsoft PowerPoint conversion failed: $($_.Exception.Message)"
-        return $false
-    }
-    finally {
+        try {
+            $presentation.SaveAs($PdfPath, 32) # ppSaveAsPDF
+        } catch {
+            Write-Log "PowerPoint SaveAs failed; trying fixed-format export: $($_.Exception.Message)"
+            [IO.File]::Delete($PdfPath)
+            # PrintRange is required, even when exporting all slides.
+            $presentation.ExportAsFixedFormat($PdfPath, 2, 1, 0, 1, 1, 0, $null)
+        }
+    } finally {
+        $openLock.Dispose()
         if ($null -ne $presentation) {
             try { $presentation.Close() } catch {}
             Release-ComObject $presentation
         }
-
-        if ($null -ne $powerpoint) {
-            try { $powerpoint.Quit() } catch {}
-            Release-ComObject $powerpoint
-        }
-
-        [GC]::Collect()
-        [GC]::WaitForPendingFinalizers()
+        Release-ComObject $presentations
+        # Releasing our references leaves any interactive PowerPoint session intact.
+        Release-ComObject $powerpoint
     }
 }
-
 
 function Convert-OneFile {
     param([string]$Path)
 
-    if (-not (Test-Path -LiteralPath $Path)) {
-        Write-Log "File not found: $Path"
-        $script:FailCount++
-        return
-    }
-
-    $fullPath = (Resolve-Path -LiteralPath $Path).Path
-    $ext = [System.IO.Path]::GetExtension($fullPath).ToLowerInvariant()
-    $usedOffice = $false
-    $converted = $false
-    $supported = $true
-
     $script:TotalCount++
-
-    Write-Log "----------------------------------------"
-    Write-Log "Input: $fullPath"
-
-    switch ($ext) {
-        ".doc"  { $usedOffice = Convert-WordToPdf $fullPath }
-        ".docx" { $usedOffice = Convert-WordToPdf $fullPath }
-        ".odt"  { $usedOffice = Convert-WordToPdf $fullPath }
-        ".xls"  { $usedOffice = Convert-ExcelToPdf $fullPath }
-        ".xlsx" { $usedOffice = Convert-ExcelToPdf $fullPath }
-        ".ods"  { $usedOffice = Convert-ExcelToPdf $fullPath }
-        ".ppt"  { $usedOffice = Convert-PowerPointToPdf $fullPath }
-        ".pptx" { $usedOffice = Convert-PowerPointToPdf $fullPath }
-        ".odp"  { $usedOffice = Convert-PowerPointToPdf $fullPath }
-        default {
-            Write-Log "Unsupported file type: $ext"
-            $supported = $false
+    $workDir = $null
+    $engine = $null
+    $result = [pscustomobject]@{ Path = $Path; Status = 'Failed'; OutputPath = $null; Message = '' }
+    try {
+        if (!(Test-Path -LiteralPath $Path -PathType Leaf)) { throw 'File not found.' }
+        $fullPath = (Resolve-Path -LiteralPath $Path).ProviderPath
+        $ext = [IO.Path]::GetExtension($fullPath).ToLowerInvariant()
+        $engine = switch ($ext) {
+            { $_ -in '.doc', '.docx', '.odt' } { 'Word' }
+            { $_ -in '.xls', '.xlsx', '.ods' } { 'Excel' }
+            { $_ -in '.ppt', '.pptx', '.odp' } { 'PowerPoint' }
         }
-    }
-
-    if (-not $supported) {
-        $script:SkipCount++
-        return
-    }
-
-    if ($usedOffice) {
-        $converted = $true
-    } else {
-        Write-Log "Trying LibreOffice/OpenOffice/OxOffice fallback..."
-        $converted = Convert-WithSoffice $fullPath
-    }
-
-    if ($converted) {
+        if (!$engine) {
+            $result.Status = 'Skipped'
+            $result.Message = "不支援的檔案格式 $ext"
+            Write-Log "Skipped: $Path ($($result.Message))"
+            $script:SkipCount++
+            return
+        }
+        Write-Log "----------------------------------------"
+        Write-Log "Input: $fullPath"
+        $workDir = Join-Path ([IO.Path]::GetTempPath()) ('rcpdf-' + [Guid]::NewGuid().ToString('N'))
+        [void][IO.Directory]::CreateDirectory($workDir)
+        $pdf = Join-Path $workDir 'output.pdf'
+        Write-Log "Using Microsoft $engine..."
+        & "Convert-${engine}ToPdf" $fullPath $pdf
+        Assert-PdfOutput $pdf
+        $output = Publish-Pdf $pdf $fullPath
+        $result.Status = 'Success'
+        $result.OutputPath = $output
+        Write-Log "OK: $output"
         $script:SuccessCount++
-    } else {
+    } catch {
+        $source = if ($engine) { "Microsoft $engine" } else { 'Input' }
+        $reason = $_.Exception.GetBaseException().Message
+        $result.Message = "[$source] $reason"
+        Write-Log "Failed: $Path $($result.Message)"
         $script:FailCount++
+    } finally {
+        if ($workDir) { Remove-Item -LiteralPath $workDir -Recurse -Force -ErrorAction SilentlyContinue }
+        if ($OnFileResult) {
+            try { $null = & $OnFileResult $result }
+            catch { Write-Log "Could not send file status: $($_.Exception.Message)" }
+        }
     }
 }
 
@@ -444,8 +295,7 @@ try { [Console]::OutputEncoding = [System.Text.Encoding]::UTF8 } catch {}
 
 if ($null -eq $Paths -or $Paths.Count -eq 0) {
     Write-Host "No input files were received."
-    Write-Host "Use the Windows context menu, the SendTo shortcut, or drag files onto RightClickOfficeToPDF.cmd."
-    Read-Host "Press Enter to close"
+    Write-Host "Select an Office document in File Explorer and use the Convert to PDF menu command."
     exit 1
 }
 

@@ -1,0 +1,38 @@
+name: Windows conversion and shell integration
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: windows-2022
+    timeout-minutes: 15
+    defaults:
+      run:
+        shell: powershell
+    steps:
+      - uses: actions/checkout@v4
+      - name: Test Office conversion and installer behavior
+        run: |
+          .\tests\Test-Conversion.ps1
+          .\tests\Test-MenuInstall.ps1
+          exit 0
+      - name: Test the shared progress window
+        run: .\tests\Test-ProgressWindow.ps1
+      - name: Build x64 and ARM64 development ZIP
+        run: .\tools\Build-ReleaseZip.ps1 -Development
+      - name: Test the packaged x64 Explorer command
+        run: |
+          $archive = Get-ChildItem .\release\*-dev.zip
+          $dir = Join-Path $env:RUNNER_TEMP 'office-pdf-package'
+          Expand-Archive -LiteralPath $archive.FullName -DestinationPath $dir
+          .\tests\Test-ModernMenu.ps1 -Package (Join-Path $dir 'ModernMenu\RightClickOfficeToPDF-x64.msix')
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows-development-package
+          path: release/*-dev.zip
+          if-no-files-found: error

@@ -9,7 +9,7 @@
 ## 安全設計
 
 - 安裝於目前使用者的 `%LOCALAPPDATA%\RightClickOfficeToPDF`。
-- 只寫入目前使用者層級的 `HKCU` 右鍵選單設定。
+- 傳統選單使用目前使用者的 `HKCU` 設定。Windows 11 正式發行版使用 Windows 的套件部署功能，註冊已簽章的原生檔案總管命令。
 - 不需要系統管理員權限。
 - 不修改 Windows 11 全域右鍵選單模式。
 - 不包含將 Windows 11 右鍵選單強制改回傳統模式的腳本。
