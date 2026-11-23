@@ -89,5 +89,5 @@ function Install-ModernMenu {
             }
         }
     }
-    Write-Host 'Windows 11 新版右鍵選單已註冊。如果選單尚未更新，請重新啟動檔案總管或重新登入。'
+    Write-Host 'Windows 11 新版右鍵選單已註冊。若命令在「應用程式擴充功能」內，請至「設定 → 個人化 → 操作功能表 → 應用程式延伸模組」，開啟 Right Click Office to PDF，即可在右鍵第一層使用。'
 }
