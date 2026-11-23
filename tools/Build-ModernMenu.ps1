@@ -46,7 +46,7 @@ try {
     Run-Native cmake @('--install', $build, '--config', 'Release', '--prefix', $stage)
     Copy-Item -LiteralPath (Join-Path $source 'Invoke-Selection.ps1') -Destination $stage
     Copy-Item -Path (Join-Path $source 'Logo*.png') -Destination $stage
-    foreach ($script in 'Show-ConversionProgress.ps1','ProgressControls.cs','Invoke-RightClickOfficeToPDF.ps1','Convert-OfficeToPdf.ps1') {
+    foreach ($script in 'OfficePdfText.ps1', 'Show-ConversionProgress.ps1','ProgressControls.cs','Invoke-RightClickOfficeToPDF.ps1','Convert-OfficeToPdf.ps1') {
         Copy-Item -LiteralPath (Join-Path $root $script) -Destination $stage
     }
     $manifest = [xml](Get-Content -LiteralPath (Join-Path $source 'AppxManifest.xml') -Encoding UTF8 -Raw)

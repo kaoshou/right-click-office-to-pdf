@@ -22,7 +22,9 @@ jobs:
           .\tests\Test-MenuInstall.ps1
           exit 0
       - name: Test the shared progress window
-        run: .\tests\Test-ProgressWindow.ps1
+        run: |
+          .\tests\Test-ProgressWindow.ps1 -Language zh-TW
+          powershell -NoProfile -STA -ExecutionPolicy Bypass -File .\tests\Test-ProgressWindow.ps1 -Language en-US
       - name: Build x64 and ARM64 development ZIP
         run: .\tools\Build-ReleaseZip.ps1 -Development
       - name: Test the packaged x64 Explorer command

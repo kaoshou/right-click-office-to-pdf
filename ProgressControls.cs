@@ -162,8 +162,11 @@ namespace OfficePdf
             Color ink, tint;
             switch (state)
             {
+                case "Converting":
                 case "轉換中": ink = Color.FromArgb(21, 95, 197); tint = Color.FromArgb(225, 238, 255); break;
+                case "Completed":
                 case "已完成": ink = Color.FromArgb(8, 119, 94); tint = Color.FromArgb(224, 244, 237); break;
+                case "Failed":
                 case "未完成": ink = Color.FromArgb(174, 52, 52); tint = Color.FromArgb(255, 233, 232); break;
                 default: ink = Color.FromArgb(82, 97, 114); tint = Color.FromArgb(234, 239, 244); break;
             }

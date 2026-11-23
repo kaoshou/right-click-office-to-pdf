@@ -4,6 +4,8 @@
     [Parameter()][scriptblock]$OnFileResult
 )
 
+. (Join-Path $PSScriptRoot 'OfficePdfText.ps1')
+
 $ErrorActionPreference = "Stop"
 
 $script:TotalCount = 0
@@ -79,13 +81,13 @@ function Assert-PdfOutput {
     try {
         $header = New-Object byte[] 5
         if ($stream.Read($header, 0, 5) -ne 5 -or [Text.Encoding]::ASCII.GetString($header) -ne '%PDF-') {
-            throw 'The converter did not write a PDF header.'
+            throw $OfficePdfText.Header
         }
         $tail = New-Object byte[] ([int][Math]::Min(1024L, $stream.Length))
         $stream.Position = $stream.Length - $tail.Length
         [void]$stream.Read($tail, 0, $tail.Length)
         if ([Text.Encoding]::ASCII.GetString($tail) -notmatch '%%EOF[\x00\t\n\f\r ]*\z') {
-            throw 'The PDF is incomplete (missing end-of-file marker).'
+            throw $OfficePdfText.Eof
         }
     } finally {
         $stream.Dispose()
@@ -201,7 +203,7 @@ function Convert-PowerPointToPdf {
     try {
         try { $locked = $openLock.WaitOne(30000) }
         catch [Threading.AbandonedMutexException] { $locked = $true }
-        if (!$locked) { throw 'Another PowerPoint conversion is still opening a presentation.' }
+        if (!$locked) { throw $OfficePdfText.PowerPointBusy }
         try {
             $powerpoint = New-Object -ComObject PowerPoint.Application
             $presentations = $powerpoint.Presentations
@@ -248,7 +250,7 @@ function Convert-OneFile {
     $engine = $null
     $result = [pscustomobject]@{ Path = $Path; Status = 'Failed'; OutputPath = $null; Message = '' }
     try {
-        if (!(Test-Path -LiteralPath $Path -PathType Leaf)) { throw 'File not found.' }
+        if (!(Test-Path -LiteralPath $Path -PathType Leaf)) { throw $OfficePdfText.FileMissing }
         $fullPath = (Resolve-Path -LiteralPath $Path).ProviderPath
         $ext = [IO.Path]::GetExtension($fullPath).ToLowerInvariant()
         $engine = switch ($ext) {
@@ -258,7 +260,7 @@ function Convert-OneFile {
         }
         if (!$engine) {
             $result.Status = 'Skipped'
-            $result.Message = "不支援的檔案格式 $ext"
+            $result.Message = ($OfficePdfText.Unsupported -f $ext)
             Write-Log "Skipped: $Path ($($result.Message))"
             $script:SkipCount++
             return
@@ -294,8 +296,7 @@ function Convert-OneFile {
 try { [Console]::OutputEncoding = [System.Text.Encoding]::UTF8 } catch {}
 
 if ($null -eq $Paths -or $Paths.Count -eq 0) {
-    Write-Host "No input files were received."
-    Write-Host "Select an Office document in File Explorer and use the Convert to PDF menu command."
+    Write-Host $OfficePdfText.SelectHint
     exit 1
 }
 

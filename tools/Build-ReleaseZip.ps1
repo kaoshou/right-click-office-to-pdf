@@ -54,7 +54,7 @@ try {
     }
     foreach ($name in @(
         'Convert-OfficeToPdf.ps1', 'Invoke-RightClickOfficeToPDF.ps1', 'Install-RightClickOfficeToPDF.ps1',
-        'ModernMenu.ps1', 'Show-ConversionProgress.ps1', 'ProgressControls.cs', 'Uninstall-RightClickOfficeToPDF.ps1', 'install.ps1', 'uninstall.ps1',
+        'ModernMenu.ps1', 'OfficePdfText.ps1', 'Show-ConversionProgress.ps1', 'ProgressControls.cs', 'Uninstall-RightClickOfficeToPDF.ps1', 'install.ps1', 'uninstall.ps1',
         'README.md', 'SECURITY.md', 'LICENSE', 'CHANGELOG.md', 'VERSION', 'docs'
     )) {
         Copy-Item -LiteralPath (Join-Path $projectRoot $name) -Destination $payload -Recurse
