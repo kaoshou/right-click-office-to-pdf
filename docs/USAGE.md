@@ -1,43 +1,21 @@
-﻿# Usage
+# 使用方式
 
-## 安裝
+## 用右鍵轉換
 
-### 單行快速安裝
+1. 在檔案總管選取一份或多份支援的文件。
+2. 按右鍵，選 **轉換為 PDF 檔案**。Windows 11 已註冊新版選單時可直接點選；傳統選單位於「顯示其他選項」。
+3. 在同一個視窗查看待處理、轉換中與已完成的檔案。轉檔期間可以最小化視窗或繼續從檔案總管加入其他文件。
+
+進度條依實際處理的份數更新。Word、PowerPoint、Excel 正在匯出單一文件時，檔名旁會顯示活動指示。全部成功後視窗會在數秒後關閉。若有失敗，視窗會保留，點選對應檔案可查看並複製錯誤原因。
+
+## 找到 PDF
+
+PDF 存放在對應原檔旁。選取已完成的項目可以保留結果視窗、查看完整路徑，或按「開啟資料夾」。也可以用上下方向鍵逐項查看。若同名檔案已存在，下個輸出會命名為「簡報 (1).pdf」，再下一個為「簡報 (2).pdf」。
+
+## 從命令列轉換
+
+在專案目錄開啟 Windows PowerShell，執行以下指令可取得每份文件的結果；批次中有檔案失敗時會回傳代碼 1。
 
 ```powershell
-iwr -UseBasicParsing https://raw.githubusercontent.com/kaoshou/right-click-office-to-pdf/main/install.ps1 -OutFile "$env:TEMP\right-click-office-to-pdf-install.ps1"; powershell -NoProfile -ExecutionPolicy Bypass -File "$env:TEMP\right-click-office-to-pdf-install.ps1"
+.\Convert-OfficeToPdf.ps1 -Paths @('C:\教材\講義.docx', 'C:\教材\簡報.pptx')
 ```
-
-### 手動安裝
-
-```powershell
-powershell -ExecutionPolicy Bypass -File .\Install-RightClickOfficeToPDF.ps1
-```
-
-## 單檔轉換
-
-```text
-選取檔案 → 右鍵 → 顯示其他選項 → 轉換為 PDF 檔案
-```
-
-適合單一 `.docx`、`.pptx`、`.xlsx` 等檔案。
-
-## 多檔轉換
-
-```text
-選取多個檔案 → 右鍵 → 顯示其他選項 → 傳送到 → 轉換為 PDF 檔案
-```
-
-多檔批次轉換最推薦使用「傳送到」方式。
-
-## 拖曳到 CMD 啟動器
-
-也可以將檔案拖曳到：
-
-```text
-RightClickOfficeToPDF.cmd
-```
-
-## 輸出位置
-
-PDF 會輸出到原始檔案所在資料夾。同名 PDF 存在時，會自動加序號避免覆蓋。

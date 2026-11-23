@@ -1,24 +1,22 @@
-﻿# Right Click Office to PDF
+# Right Click Office to PDF
 
-**Right Click Office to PDF** 是一個 Windows 右鍵快速轉 PDF 工具。使用者可以在檔案總管中選取 Office 文件，透過右鍵選單直接轉成 PDF。此工具純粹使用 PowerShell 呼叫 Office 工具來將檔案轉換為 PDF，所以使用者電腦必須先安裝相關工具。
+在檔案總管選取一份或多份 Office 文件，按右鍵選 **轉換為 PDF 檔案**。PDF 會存到原檔旁。轉檔使用本機已安裝且啟用的 Microsoft Office 桌面版。
 
-本工具採用 **Microsoft Office 優先、LibreOffice / OpenOffice / OxOffice 備援** 的混合式轉檔策略：
-
-```text
-DOC / DOCX      → 優先 Microsoft Word        → 失敗再嘗試 LibreOffice / OpenOffice / OxOffice
-XLS / XLSX      → 優先 Microsoft Excel       → 失敗再嘗試 LibreOffice / OpenOffice / OxOffice
-PPT / PPTX      → 優先 Microsoft PowerPoint  → 失敗再嘗試 LibreOffice / OpenOffice / OxOffice
-ODT / ODS / ODP → 優先 Microsoft Office      → 失敗再嘗試 LibreOffice / OpenOffice / OxOffice
-```
+| 檔案 | 使用的 Office 程式 |
+| --- | --- |
+| DOC、DOCX、ODT | Word |
+| PPT、PPTX、ODP | PowerPoint |
+| XLS、XLSX、ODS | Excel |
 
 ---
 
 ## 主要功能
 
-- 支援 DOC、DOCX、PPT、PPTX、XLS、XLSX、ODT、ODS、ODP。
-- 支援單一檔案右鍵轉 PDF，也可多選檔案後透過右鍵批次轉 PDF。
-- 優先使用本機 Microsoft Office，提高 Word、Excel、PowerPoint 文件版面相容性。
-- Microsoft Office 不可用或單檔轉換失敗時，自動嘗試 LibreOffice、OpenOffice、OxOffice 的 `soffice.exe`。
+- 單檔、多檔共用一個進度視窗，顯示目前檔名、已處理數量及每份檔案的結果。
+- 遇到錯誤會保留 Office 的失敗原因，繼續處理其他檔案。點選成功項目可查看 PDF 的完整路徑。
+- 會檢查匯出檔的 PDF 標頭與結尾，再存到原檔旁。同名時自動加上序號。
+
+![四份文件共用一個進度視窗，兩份已完成、一份轉換中、一份等候中](docs/progress-window.png)
 
 ---
 
@@ -46,7 +44,7 @@ iwr -UseBasicParsing https://raw.githubusercontent.com/kaoshou/right-click-offic
 
 ## 手動下載與安裝
 
-若不使用單行指令安裝，也可以下載此專案後解壓縮，例如：
+請從 [GitHub Releases](https://github.com/kaoshou/right-click-office-to-pdf/releases) 下載正式發行 ZIP 並解壓縮，例如：
 
 ```text
 C:\Users\你的帳號\Downloads\right-click-office-to-pdf
@@ -64,12 +62,7 @@ powershell -ExecutionPolicy Bypass -File .\Install-RightClickOfficeToPDF.ps1
 %LOCALAPPDATA%\RightClickOfficeToPDF
 ```
 
-並建立：
-
-```text
-右鍵傳統選單項目
-支援格式的右鍵選單登錄設定
-```
+Windows 11 x64／ARM64 會從發行 ZIP 註冊對應架構的現代右鍵選單。Windows 10 使用傳統右鍵選單。若使用 GitHub 的「Source code」原始碼壓縮檔，預設只安裝傳統選單。開發版 ZIP 的測試方法請見[部署說明](docs/DEPLOYMENT.md)。
 
 ---
 
@@ -80,14 +73,13 @@ powershell -ExecutionPolicy Bypass -File .\Install-RightClickOfficeToPDF.ps1
 1. 在 Windows 檔案總管選取一個或多個支援的檔案，例如 `.docx`、`.pptx`、`.xlsx`。
 2. 按右鍵。
 3. 點選「轉換為 PDF 檔案」。
-4. 工具會在文字介面中列出收到的檔案，並逐一轉換。
+4. 在進度視窗查看目前檔案與完成數量。全部成功後視窗會自動關閉；有錯誤時，點選該列即可查看。
 
 ```text
 右鍵 → 轉換為 PDF 檔案
 ```
 
-在 Windows 11 中，傳統 shell 右鍵選單項目可能會出現在「顯示其他選項」內。  
-本工具只會針對支援的 Office / OpenDocument 格式註冊右鍵選單；不支援的檔案類型不會出現此選項。
+在 Windows 11，若命令只出現在「顯示其他選項」，請先安裝含新版選單的發行 ZIP。若右鍵內有「應用程式擴充功能」，可從中選擇轉檔。要讓命令出現在右鍵第一層，請到 **設定 → 個人化 → 操作功能表 → 應用程式延伸模組**，開啟 **Right Click Office to PDF**。
 
 ---
 
@@ -130,49 +122,9 @@ powershell -ExecutionPolicy Bypass -File .\Uninstall-RightClickOfficeToPDF.ps1
 解除安裝會移除：
 
 ```text
-右鍵選單登錄設定
+目前使用者的 Windows 11 右鍵選單套件
 支援格式的右鍵選單登錄設定
 %LOCALAPPDATA%\RightClickOfficeToPDF
-```
-
----
-
-## 支援的轉檔引擎
-
-### Microsoft Office
-
-若本機已安裝 Microsoft Office，工具會優先使用：
-
-```text
-Word.Application       → DOC / DOCX / ODT
-Excel.Application      → XLS / XLSX / ODS
-PowerPoint.Application → PPT / PPTX / ODP
-```
-
-這通常能取得最接近原始文件的 PDF 排版。
-
-### LibreOffice / OpenOffice / OxOffice
-
-若 Microsoft Office 不可用或該檔案轉換失敗，工具會尋找：
-
-```text
-soffice.exe
-```
-
-常見搜尋位置包含：
-
-```text
-C:\Program Files\LibreOffice\program\soffice.exe
-C:\Program Files\OpenOffice 4\program\soffice.exe
-C:\Program Files\Apache OpenOffice 4\program\soffice.exe
-C:\Program Files\OxOffice\program\soffice.exe
-C:\Program Files\OSSII\OxOffice\program\soffice.exe
-```
-
-也可透過環境變數指定：
-
-```text
-SOFFICE_PATH
 ```
 
 ---
@@ -180,7 +132,7 @@ SOFFICE_PATH
 ## 安全說明摘要
 
 - 本工具只在本機執行，不會上傳文件，不會呼叫雲端 API。
-- 本工具不內建 Microsoft Office、LibreOffice、OpenOffice 或 OxOffice，也不繞過任何軟體授權。
+- 轉檔需要 Microsoft Office 桌面版授權。
 - 使用 Microsoft Office COM 自動化轉檔時，工具會盡量以唯讀模式開啟檔案，並嘗試停用巨集自動化執行。
 - 不建議轉換來源不明、可能含惡意巨集或惡意內容的 Office 文件。
 - 若檔案處於保護檢視、密碼保護、開啟需互動確認、或含外部連結提示，背景轉檔可能失敗。
@@ -190,40 +142,23 @@ SOFFICE_PATH
 
 ---
 
-## Windows 11 右鍵選單說明
-
-本工具採用穩定的傳統 Windows Shell 整合方式。於 Windows 11 中，功能通常會顯示在：
-
-```text
-右鍵 → 顯示其他選項 → 轉換為 PDF 檔案
-```
-
-或：
-
-```text
-右鍵 → 顯示其他選項 → 傳送到 → 轉換為 PDF 檔案
-```
-
-本專案不修改 Windows 11 全域右鍵選單樣式，也不將 Windows 11 強制改回 Windows 10 傳統右鍵選單。
-
----
-
 ## 已知限制
 
 - Excel 轉 PDF 會受工作表列印範圍、紙張方向、縮放比例影響。
 - Office 文件若需要密碼、手動確認、信任中心互動、外部連結確認，可能無法背景轉換。
 - PowerPoint 若包含特殊字型、影音、外掛內容，PDF 可能與原始播放效果不同。
-- LibreOffice / OpenOffice / OxOffice 備援轉檔的版面可能與 Microsoft Office 有差異。
+- Office 等候密碼或互動視窗時，進度會停在該檔。詳見[疑難排解](docs/TROUBLESHOOTING.md)。
 
 ---
 
 ## 專案資訊
 
 - Project: `right-click-office-to-pdf`
-- Version: `1.0.0`
+- Version: `1.1.0`
 - Platform: Windows 10 / Windows 11
 - Runtime: Windows PowerShell 5.1 或 PowerShell 7+
 - Developer: Yu-Han Cheng（鄭郁翰）
+- 本版的 Office 轉檔流程、批次進度視窗及 Windows 11 右鍵選單由 OpenAI Codex 協助開發與測試。
 - GitHub: `https://github.com/kaoshou/right-click-office-to-pdf`
 
 ---

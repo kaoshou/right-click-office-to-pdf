@@ -1,0 +1,49 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Package xmlns="http://schemas.microsoft.com/appx/manifest/foundation/windows10"
+    xmlns:uap="http://schemas.microsoft.com/appx/manifest/uap/windows10"
+    xmlns:desktop4="http://schemas.microsoft.com/appx/manifest/desktop/windows10/4"
+    xmlns:desktop5="http://schemas.microsoft.com/appx/manifest/desktop/windows10/5"
+    xmlns:desktop6="http://schemas.microsoft.com/appx/manifest/desktop/windows10/6"
+    xmlns:com="http://schemas.microsoft.com/appx/manifest/com/windows10"
+    xmlns:rescap="http://schemas.microsoft.com/appx/manifest/foundation/windows10/restrictedcapabilities"
+    IgnorableNamespaces="uap desktop4 desktop5 desktop6 com rescap">
+  <Identity Name="Kaoshou.RightClickOfficeToPDF.Menu" Publisher="CN=kaoshou" Version="1.0.0.0" ProcessorArchitecture="x64" />
+  <Properties>
+    <DisplayName>Right Click Office to PDF</DisplayName>
+    <PublisherDisplayName>kaoshou</PublisherDisplayName>
+    <Logo>Logo50.png</Logo>
+    <!-- The classic launcher, Office and Explorer must see the same queue and
+         output path, including documents selected inside the user's AppData. -->
+    <desktop6:FileSystemWriteVirtualization>disabled</desktop6:FileSystemWriteVirtualization>
+  </Properties>
+  <Dependencies>
+    <TargetDeviceFamily Name="Windows.Desktop" MinVersion="10.0.22000.0" MaxVersionTested="10.0.26100.0" />
+  </Dependencies>
+  <Resources><Resource Language="zh-TW" /></Resources>
+  <Applications>
+    <Application Id="OfficeToPDF" Executable="OfficeToPDF.exe" EntryPoint="Windows.FullTrustApplication">
+      <uap:VisualElements DisplayName="Right Click Office to PDF" Description="轉換為 PDF 檔案"
+          Square150x150Logo="Logo150.png" Square44x44Logo="Logo44.png" BackgroundColor="transparent" AppListEntry="none" />
+      <Extensions>
+        <com:Extension Category="windows.comServer">
+          <com:ComServer>
+            <com:SurrogateServer DisplayName="Right Click Office to PDF">
+              <com:Class Id="91D6A591-2BD6-4452-B66B-997E66B08C4B" Path="ExplorerCommand.dll" ThreadingModel="STA" />
+            </com:SurrogateServer>
+          </com:ComServer>
+        </com:Extension>
+        <desktop4:Extension Category="windows.fileExplorerContextMenus">
+          <desktop4:FileExplorerContextMenus>
+            <desktop5:ItemType Type="*">
+              <desktop5:Verb Id="OfficeToPDF" Clsid="91D6A591-2BD6-4452-B66B-997E66B08C4B" />
+            </desktop5:ItemType>
+          </desktop4:FileExplorerContextMenus>
+        </desktop4:Extension>
+      </Extensions>
+    </Application>
+  </Applications>
+  <Capabilities>
+    <rescap:Capability Name="runFullTrust" />
+    <rescap:Capability Name="unvirtualizedResources" />
+  </Capabilities>
+</Package>

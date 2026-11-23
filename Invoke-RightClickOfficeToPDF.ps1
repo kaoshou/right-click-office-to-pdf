@@ -69,84 +69,52 @@ function Resolve-InputPathsForDisplay {
     return @($result.ToArray() | Select-Object -Unique)
 }
 
-$converter = Join-Path $PSScriptRoot "Convert-OfficeToPdf.ps1"
+function Wait-BeforeClosing {
+    if ([Console]::IsInputRedirected -or [Environment]::GetCommandLineArgs() -contains '-NonInteractive') { return }
+    Write-Host "按任意鍵關閉視窗。"
+    try { $null = $Host.UI.RawUI.ReadKey("NoEcho,IncludeKeyDown") } catch {}
+}
 
-Clear-Host
-Write-Host "==============================================="
-Write-Host " Right Click Office to PDF"
-Write-Host " 轉換為 PDF 檔案"
-Write-Host "==============================================="
+$converter = Join-Path $PSScriptRoot "Convert-OfficeToPdf.ps1"
+Write-Host "轉換為 PDF 檔案"
 Write-Host ""
 
-if (-not (Test-Path -LiteralPath $converter)) {
-    Write-Host "Converter script was not found: $converter"
-    Write-Host ""
-    Write-Host "Press any key to close."
-    try { $null = $Host.UI.RawUI.ReadKey("NoEcho,IncludeKeyDown") } catch { Read-Host | Out-Null }
+if (-not (Test-Path -LiteralPath $converter -PathType Leaf)) {
+    Write-Host "找不到轉檔程式，請重新安裝：$converter"
+    Wait-BeforeClosing
     exit 1
 }
 
 $inputFiles = @(Resolve-InputPathsForDisplay $Paths)
-
 if ($inputFiles.Count -eq 0) {
-    Write-Host "No input files were received."
-    Write-Host "沒有收到要轉換的檔案。"
-    Write-Host ""
-    Write-Host "Press any key to close."
-    try { $null = $Host.UI.RawUI.ReadKey("NoEcho,IncludeKeyDown") } catch { Read-Host | Out-Null }
+    Write-Host "請在檔案總管選取要轉換的文件，再按右鍵選擇「轉換為 PDF 檔案」。"
+    Wait-BeforeClosing
     exit 1
 }
 
-Write-Host ("Files received: {0}" -f $inputFiles.Count)
+Write-Host ("已選取 {0} 個檔案。" -f $inputFiles.Count)
+foreach ($file in $inputFiles) {
+    Write-Host ([System.IO.Path]::GetFileName($file))
+}
 Write-Host ""
 
-if ($inputFiles.Count -eq 1) {
-    Write-Host ("File: {0}" -f [System.IO.Path]::GetFileName($inputFiles[0]))
+try {
+    & $converter -Paths $inputFiles
+    $exitCode = $LASTEXITCODE
+} catch {
+    Write-Host ("無法執行轉檔程式：{0}" -f $_.Exception.Message)
+    $exitCode = 1
 }
-else {
-    for ($i = 0; $i -lt $inputFiles.Count; $i++) {
-        Write-Host ("[{0}/{1}] {2}" -f ($i + 1), $inputFiles.Count, [System.IO.Path]::GetFileName($inputFiles[$i]))
-    }
-}
-
-Write-Host ""
-Write-Host "Starting conversion..."
-Write-Host ""
-
-& $converter @inputFiles
-$exitCode = $LASTEXITCODE
-
-if ($null -eq $exitCode) {
-    if ($?) { $exitCode = 0 } else { $exitCode = 1 }
-}
-
-Write-Host "----------------------------------------"
 
 if ($exitCode -ne 0) {
-    Write-Host "Some files failed."
-    Write-Host ""
-    Write-Host "Press any key to close."
-    try {
-        $null = $Host.UI.RawUI.ReadKey("NoEcho,IncludeKeyDown")
-    } catch {
-        Read-Host | Out-Null
-    }
-}
-else {
-    Write-Host "All files completed."
-
+    Write-Host "部分檔案未能轉換。請查看上方對應檔名的錯誤訊息。"
+    Wait-BeforeClosing
+} else {
+    Write-Host "轉換完成。PDF 已儲存在原檔案旁。"
     if ($AutoCloseOnSuccess) {
         Start-Sleep -Seconds $AutoCloseDelaySeconds
-    }
-    else {
-        Write-Host ""
-        Write-Host "Press any key to close."
-        try {
-            $null = $Host.UI.RawUI.ReadKey("NoEcho,IncludeKeyDown")
-        } catch {
-            Read-Host | Out-Null
-        }
+    } else {
+        Wait-BeforeClosing
     }
 }
-
 exit $exitCode
