@@ -1,3 +1,8 @@
+---
+title: Right Click Office to PDF – Privacy Policy（隱私權政策）
+permalink: /privacy/
+---
+
 # Right Click Office to PDF · 隱私權政策 / Privacy policy
 
 發行者 / Publisher — Yu-Han · 2026-11-24
