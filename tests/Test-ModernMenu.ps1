@@ -79,8 +79,8 @@ try {
     $verb = $manifest.SelectSingleNode("//*[local-name()='Verb']")
     if ($cls.Id -ne $verb.Clsid) { throw 'Manifest class and verb do not match.' }
     $virtualization = $manifest.SelectSingleNode("//*[local-name()='FileSystemWriteVirtualization']")
-    if ($virtualization.InnerText -ne 'disabled' -or !$manifest.SelectSingleNode("//*[local-name()='Capability' and @Name='unvirtualizedResources']")) {
-        throw 'Desktop and packaged conversion must share the physical queue and PDF output paths.'
+    if ($virtualization -or $manifest.SelectSingleNode("//*[local-name()='Capability' and @Name='unvirtualizedResources']")) {
+        throw 'The package must use default Windows write virtualization.'
     }
     $dll = Join-Path $work $cls.Path
     $id = [guid]$verb.Clsid

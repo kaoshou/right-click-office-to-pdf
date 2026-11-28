@@ -4,13 +4,25 @@ param(
     [Parameter(Mandatory = $true)][string]$OutputDirectory,
     [string]$Publisher = 'CN=kaoshou',
     [string]$CertificateThumbprint,
-    [uri]$TimestampUrl
+    [uri]$TimestampUrl,
+    [string]$StoreIdentityName,
+    [string]$StoreDisplayName,
+    [string]$StorePublisherDisplayName,
+    [Version]$StoreVersion
 )
 
 $ErrorActionPreference = 'Stop'
+$storeBuild = $PSBoundParameters.ContainsKey('StoreIdentityName') -or $PSBoundParameters.ContainsKey('StoreDisplayName') -or $PSBoundParameters.ContainsKey('StorePublisherDisplayName')
+if ($storeBuild -and (!$StoreIdentityName -or !$StoreDisplayName -or !$StorePublisherDisplayName -or !$PSBoundParameters.ContainsKey('Publisher'))) {
+    throw 'Supply StoreIdentityName, StoreDisplayName, StorePublisherDisplayName and Publisher from Partner Center.'
+}
 $root = Split-Path -Parent $PSScriptRoot
 $source = Join-Path $root 'ModernMenu'
 $version = [Version]((Get-Content -LiteralPath (Join-Path $root 'VERSION') -Raw).Trim())
+if ($StoreVersion) {
+    if (!$storeBuild -or $StoreVersion.Revision -ne 0) { throw 'A Store version requires Store identity fields and a zero fourth component.' }
+    $version = $StoreVersion
+}
 $output = [IO.Path]::GetFullPath($OutputDirectory)
 [IO.Directory]::CreateDirectory($output) | Out-Null
 $tempRoot = [IO.Path]::GetFullPath([IO.Path]::GetTempPath())
@@ -51,6 +63,15 @@ try {
     }
     $manifest = [xml](Get-Content -LiteralPath (Join-Path $source 'AppxManifest.xml') -Encoding UTF8 -Raw)
     $identity = $manifest.Package.Identity
+    if ($storeBuild) {
+        $identity.SetAttribute('Name', $StoreIdentityName)
+        $manifest.Package.Properties.DisplayName = $StoreDisplayName
+        $manifest.Package.Properties.PublisherDisplayName = $StorePublisherDisplayName
+        $visual = $manifest.SelectSingleNode("//*[local-name()='VisualElements']")
+        $visual.SetAttribute('DisplayName', $StoreDisplayName)
+        # Store installations expose the existing usage dialog from Start.
+        $visual.RemoveAttribute('AppListEntry')
+    }
     $identity.SetAttribute('Publisher', $Publisher)
     $identity.SetAttribute('ProcessorArchitecture', $Architecture)
     $identity.SetAttribute('Version', ('{0}.{1}.{2}.{3}' -f $version.Major,$version.Minor,[Math]::Max(0,$version.Build),[Math]::Max(0,$version.Revision)))

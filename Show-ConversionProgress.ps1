@@ -12,6 +12,17 @@ Add-Type -AssemblyName System.Windows.Forms, System.Drawing
 # elect the window owner under the same lock, including when the window closes.
 $session = [Diagnostics.Process]::GetCurrentProcess().SessionId
 $inbox = Join-Path $env:LOCALAPPDATA "RightClickOfficeToPDF\Queue\$session"
+$officeTemp = $null
+# Use the actual package data paths. Out-of-process Office must be able
+# to reopen the scratch PDF by its physical path.
+if (Test-Path -LiteralPath (Join-Path $PSScriptRoot 'AppxManifest.xml')) {
+    try { $package = [Windows.ApplicationModel.Package,Windows.ApplicationModel,ContentType=WindowsRuntime]::Current } catch { $package = $null }
+    if ($package -and $package.InstalledLocation.Path -eq $PSScriptRoot) {
+        $data = [Windows.Storage.ApplicationData,Windows.Storage,ContentType=WindowsRuntime]::Current
+        $inbox = Join-Path $data.LocalFolder.Path "Queue\$session"
+        $officeTemp = $data.TemporaryFolder.Path
+    }
+}
 $sha = [Security.Cryptography.SHA256]::Create()
 try {
     $key = [BitConverter]::ToString($sha.ComputeHash([Text.Encoding]::UTF8.GetBytes($inbox.ToUpperInvariant()))).Replace('-', '')
@@ -74,9 +85,11 @@ function Start-NextFile {
     $worker.Runspace = $runspace
     $box = [hashtable]::Synchronized(@{})
     $null = $worker.AddScript({
-        param($entry, $file, $box)
-        & $entry -Paths $file -OnFileResult { param($record) $box.Result = $record }
-    }).AddArgument($converter).AddArgument($task.Path).AddArgument($box)
+        param($entry, $file, $box, $officeTemp)
+        $options = @{}
+        if ($officeTemp) { $options.OfficeTempDirectory = $officeTemp }
+        & $entry @options -Paths $file -OnFileResult { param($record) $box.Result = $record }
+    }).AddArgument($converter).AddArgument($task.Path).AddArgument($box).AddArgument($officeTemp)
     $state.Current = @{ Task = $task; Worker = $worker; Box = $box }
     try { $state.Current.Async = $worker.BeginInvoke() }
     catch { $state.Current.Error = $_.Exception.Message }
