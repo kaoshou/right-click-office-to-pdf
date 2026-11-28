@@ -1,7 +1,8 @@
 ﻿param(
     [Parameter(Position = 0, ValueFromRemainingArguments = $true)]
     [string[]]$Paths,
-    [Parameter()][scriptblock]$OnFileResult
+    [Parameter()][scriptblock]$OnFileResult,
+    [string]$OfficeTempDirectory = [IO.Path]::GetTempPath()
 )
 
 . (Join-Path $PSScriptRoot 'OfficePdfText.ps1')
@@ -12,6 +13,9 @@ $script:TotalCount = 0
 $script:SuccessCount = 0
 $script:FailCount = 0
 $script:SkipCount = 0
+$packageCache = if ($PSBoundParameters.ContainsKey('OfficeTempDirectory')) {
+    Join-Path (Split-Path -Parent $OfficeTempDirectory) 'LocalCache\'
+}
 
 function Write-Log {
     param([string]$Message)
@@ -105,6 +109,22 @@ function Publish-Pdf {
     $writer = [IO.File]::Open($stage, 'CreateNew', 'Write', 'None')
     try {
         try {
+            # A virtualized write may look successful inside the package but
+            # be invisible beside the document in Explorer. Check the actual
+            # backing file before publishing a success result.
+            if ($packageCache -and !$stage.StartsWith($packageCache, [StringComparison]::OrdinalIgnoreCase)) {
+                if (!('OfficePdf.OutputFile' -as [type])) {
+                    Add-Type -Namespace OfficePdf -Name OutputFile -MemberDefinition @'
+[System.Runtime.InteropServices.DllImport("kernel32.dll", CharSet=System.Runtime.InteropServices.CharSet.Unicode, SetLastError=true)]
+public static extern uint GetFinalPathNameByHandle(Microsoft.Win32.SafeHandles.SafeFileHandle file, System.Text.StringBuilder path, uint capacity, uint flags);
+'@
+                }
+                $actual = [Text.StringBuilder]::new(32768)
+                $length = [OfficePdf.OutputFile]::GetFinalPathNameByHandle($writer.SafeFileHandle, $actual, $actual.Capacity, 0)
+                if ($length -gt 0 -and $actual.ToString().StartsWith(("\\?\" + $packageCache), [StringComparison]::OrdinalIgnoreCase)) {
+                    throw $OfficePdfText.RedirectedOutput
+                }
+            }
             $reader = [IO.File]::OpenRead($PdfPath)
             try { $reader.CopyTo($writer) } finally { $reader.Dispose() }
         } finally {
@@ -267,7 +287,7 @@ function Convert-OneFile {
         }
         Write-Log "----------------------------------------"
         Write-Log "Input: $fullPath"
-        $workDir = Join-Path ([IO.Path]::GetTempPath()) ('rcpdf-' + [Guid]::NewGuid().ToString('N'))
+        $workDir = Join-Path $OfficeTempDirectory ('rcpdf-' + [Guid]::NewGuid().ToString('N'))
         [void][IO.Directory]::CreateDirectory($workDir)
         $pdf = Join-Path $workDir 'output.pdf'
         Write-Log "Using Microsoft $engine..."

@@ -28,6 +28,10 @@ public static class TestWindowText {
         SendMessageTimeout(list, 0x0100, (IntPtr)key, (IntPtr)1, 2, 500, out result);
         SendMessageTimeout(list, 0x0101, (IntPtr)key, (IntPtr)1, 2, 500, out result);
     }
+    public static void ClickButton(IntPtr button) {
+        IntPtr result;
+        SendMessageTimeout(button, 0x00F5, IntPtr.Zero, IntPtr.Zero, 2, 1000, out result);
+    }
 }
 '@
 $root = Join-Path ([IO.Path]::GetTempPath()) ('rcpdf-ui-' + [Guid]::NewGuid().ToString('N'))
@@ -222,8 +226,11 @@ exit 0
     $closeCondition = [Windows.Automation.AndCondition]::new(
         [Windows.Automation.PropertyCondition]::new([Windows.Automation.AutomationElement]::NameProperty, $OfficePdfText.Close),
         [Windows.Automation.PropertyCondition]::new([Windows.Automation.AutomationElement]::ControlTypeProperty, [Windows.Automation.ControlType]::Button))
-    $close = $window.FindFirst([Windows.Automation.TreeScope]::Descendants, $closeCondition)
-    $close.GetCurrentPattern([Windows.Automation.InvokePattern]::Pattern).Invoke()
+    # The title-bar close button can have the same localized name.
+    $close = $window.FindAll([Windows.Automation.TreeScope]::Descendants, $closeCondition) |
+        Where-Object { $_.Current.ClassName -like 'WindowsForms*.BUTTON*' } | Select-Object -First 1
+    if (!$close) { throw 'Missing WinForms close button.' }
+    [TestWindowText]::ClickButton([IntPtr]$close.Current.NativeWindowHandle)
     if (!$failedWindow.WaitForExit(5000)) { throw 'The failed batch window did not close.' }
     Write-Host 'PASS failures preserve the selected long filename, keyboard navigation, details and review window.'
 } finally {

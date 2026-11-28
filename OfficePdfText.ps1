@@ -1,6 +1,7 @@
 ﻿# Match the Windows display language. Other locales use English.
 $OfficePdfText = if ([Globalization.CultureInfo]::CurrentUICulture.TwoLetterISOLanguageName -eq 'zh') {
     @{
+        RedirectedOutput = 'Windows 已將此位置的寫入重新導向。請將文件複製到「文件」資料夾後再試一次。'
         Header = '轉檔程式未寫入 PDF 標頭。'
         Eof = 'PDF 不完整，缺少檔案結尾標記。'
         PowerPointBusy = '另一個 PowerPoint 轉檔工作正在開啟簡報。'
@@ -55,6 +56,7 @@ $OfficePdfText = if ([Globalization.CultureInfo]::CurrentUICulture.TwoLetterISOL
     }
 } else {
     @{
+        RedirectedOutput = 'Windows redirected writes to this location. Copy the document to your Documents folder and try again.'
         Header = 'The converter did not write a PDF header.'
         Eof = 'The PDF is incomplete (missing end-of-file marker).'
         PowerPointBusy = 'Another PowerPoint conversion is still opening a presentation.'

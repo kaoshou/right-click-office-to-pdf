@@ -46,6 +46,11 @@ try {
         param($path,$type)
         if ($type -ne 17) { throw 'Wrong Word PDF export format.' }
         switch ([IO.Path]::GetFileName($this.Source)) {
+            'store-export.docx' {
+                if (!(($path).StartsWith(($scratch + '\'), [StringComparison]::OrdinalIgnoreCase))) {
+                    throw 'Office received a path outside the package temporary folder.'
+                }
+            }
             'concurrent.docx' {
                 [IO.File]::WriteAllText([IO.Path]::ChangeExtension($this.Source, '.pdf'), 'another conversion')
             }
@@ -79,6 +84,15 @@ try {
             [IO.File]::ReadAllText((Join-Path $testDir 'concurrent.pdf')) -ne 'another conversion' -or
             [IO.File]::ReadAllText((Join-Path $testDir 'concurrent (1).pdf')) -ne $testPdfData) {
             throw 'Concurrent PDF overwritten or missing numbered result.'
+        }
+    }
+
+    Test-Case 'Store export uses an explicit scratch folder and publishes beside the document' {
+        $scratch = Join-Path $testDir 'TempState'
+        $file = New-InputFile 'store-export.docx'
+        & $converter -Paths $file -OfficeTempDirectory $scratch
+        if ($LASTEXITCODE -ne 0 -or [IO.File]::ReadAllText([IO.Path]::ChangeExtension($file, '.pdf')) -ne $testPdfData) {
+            throw 'Store output was not published.'
         }
     }
 
